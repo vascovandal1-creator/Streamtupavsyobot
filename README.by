@@ -1,0 +1,123 @@
+import requests
+import time
+from telegram import Bot
+from telegram.error import TelegramError
+
+# =====================
+# Настройки бота
+# =====================
+BOT_TOKEN = "8532903616:AAE6Ik1Y33VzwyJc4wDJoQQIRGzmZKoxfg8"  # Токен твоего бота
+CHAT_ID = "@tupa_vsyo"  # Канал или чат, куда постить
+YOUTUBE_API_KEY = "AIzaSyAfNP7l0gKt_o5ySimnto0Ba01675gRwh8"  # Ключ YouTube Data API v3
+
+# =====================
+# Список каналов для отслеживания
+# =====================
+CHANNELS = {
+    "Гусь": "UCOSbywsX9qgHc2No-Z4Z8CQ",
+    "Нижняя полка": "UCyt77ruZOLVRztdcP-YQgbA",
+    "Селюк": "UCw2d-PgHpthfpHRGX9vpPLQ",
+    "Костик Сопляк": "UCz_-kouNzyug_2k0cIE1aig",
+    "КамераСиевана": "UCIBiR242nRb3BV4Vf3h-0ZA",
+    "Вьетнамские приключения": "UCOHaUXZer0z9soGdgkginag",
+    "Бертолет": "UCDxns5jCJ09P4zCe_Kpyblg",
+    "Саша Урина": "UCTXx6sWPILhFFGeOcmhPDIQ",
+    "Олегон": "UCGyJh69PKkg49a4kJeTGSgQ",
+    "Ната+куколд": "UC8s6wVMVWDEmCwmVx6NuoRw",
+    "Володя Пинг-понг": "UCQvXQhIzcHy2qaCFmKnO6kw",
+    "Лил селюк": "UCgFzPho3IRnsyRdgeiqRCRA",
+    "Средний клоп": "UCCcEQ8Wwy8XliMS-vyXEyzw",
+    "Школа сук": "UCxuWNVixWyudDP0j0SChQnw",
+    "Вьетнам запасной": "UC2Gi2LMRSPQoW_KLObbzmyw",
+    "Гулливер": "UCYYvf2FsWtLgF2Py42NAqNQ",
+    "Бродяга": "UCfW_cHDEs6EAN8LsUkYX3nQ",
+    "Горбатый питекс": "UCT6AyDBCK6m4tojoRs9eM5w",
+    "Чвидарас": "UCCZUcXLbDHpnOxi2L2wXoMA",
+    "Бартез": "UCDhMI7crLkBOFXZUBgd6FMw",
+    "Галкин": "UC2Gx3FbGQoT8dl9FS0QJemQ"
+}
+
+bot = Bot(token=BOT_TOKEN)
+
+# =====================
+# Получение последних видео с канала
+# =====================
+def get_latest_videos(channel_id, max_results=5):
+    url = "https://www.googleapis.com/youtube/v3/search"
+    params = {
+        "key": YOUTUBE_API_KEY,
+        "channelId": channel_id,
+        "part": "snippet,id",
+        "order": "date",
+        "maxResults": max_results,
+        "type": "video"
+    }
+    
+    try:
+        response = requests.get(url, params=params, timeout=15)
+        if response.status_code == 200:
+            data = response.json()
+            videos = []
+            for item in data.get("items", []):
+                if item["id"]["kind"] == "youtube#video":
+                    title = item["snippet"]["title"]
+                    video_id = item["id"]["videoId"]
+                    url = f"https://youtu.be/{video_id}"
+                    videos.append(f"{title}: {url}")
+            return videos
+        else:
+            print(f"Ошибка YouTube API ({channel_id}): {response.status_code}")
+            return []
+    except Exception as e:
+        print(f"Ошибка запроса к YouTube ({channel_id}): {e}")
+        return []
+
+# =====================
+# Основной цикл бота
+# =====================
+def main():
+    last_message_id = None
+    print("Бот запущен! Проверка каждые 60 минут...")
+
+    while True:
+        post_text = "🔥 Новые видео и стримы:\n\n"
+        active_channels = []
+
+        # Проверяем все каналы
+        for name, channel_id in sorted(CHANNELS.items()):
+            videos = get_latest_videos(channel_id)
+            if videos:
+                active_channels.append((name, videos))
+
+        # Формируем пост только из активных каналов
+        if active_channels:
+            for name, videos in active_channels:
+                post_text += f"🎬 {name}:\n"
+                post_text += "\n".join(videos) + "\n\n"
+        else:
+            post_text += "По стримам насрано 😎"
+
+        # Удаляем предыдущее сообщение
+        if last_message_id:
+            try:
+                bot.delete_message(chat_id=CHAT_ID, message_id=last_message_id)
+            except TelegramError:
+                pass  # Если сообщение уже удалено или ошибка — игнорируем
+
+        # Отправляем новое
+        try:
+            message = bot.send_message(
+                chat_id=CHAT_ID,
+                text=post_text,
+                disable_web_page_preview=True
+            )
+            last_message_id = message.message_id
+            print(f"[{time.strftime('%H:%M:%S')}] Пост обновлён. Активных каналов: {len(active_channels)}")
+        except TelegramError as e:
+            print(f"Ошибка отправки в Telegram: {e}")
+
+        # Ждём 1 час до следующей проверки
+        time.sleep(3600)
+
+if __name__ == "__main__":
+    main()
